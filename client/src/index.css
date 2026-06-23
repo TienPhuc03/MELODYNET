@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+.page-card {
+  border-radius: 1.5rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: linear-gradient(135deg, rgb(15 23 42 / 0.95), rgb(30 41 59 / 0.85));
+  padding: 3rem;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.35);
+}
+
+.page-card h1 {
+  margin-top: 0.75rem;
+  font-size: clamp(2.25rem, 7vw, 5rem);
+  font-weight: 800;
+  letter-spacing: -0.06em;
+}
+
+.page-card p:last-child {
+  max-width: 42rem;
+  color: rgb(203 213 225);
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+
+.eyebrow {
+  color: rgb(34 211 238);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
