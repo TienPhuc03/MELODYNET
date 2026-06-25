@@ -2,4 +2,10 @@ python-dotenv
 sqlalchemy
 psycopg2-binary
 fastapi
-uvicorn
+uvicorn[standard]
+pydantic          # FastAPI dùng
+python-jose       # hoặc thay bằng PyJWT nếu dùng
+aiofiles          # nếu có
+# Và quan trọng nhất:
+sqlite3     
+

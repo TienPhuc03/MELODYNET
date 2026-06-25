@@ -1,4 +1,4 @@
-from __future__ import annotations
+# from __future__ import annotations
 
 import base64
 import hashlib
@@ -102,9 +102,13 @@ class TokenManager:
             raise SecurityError("Token format is invalid.") from exc
 
         signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+
+        # hmac.new(key, msg, digestmod) — đây là cú pháp chuẩn Python 3.8+
+        # hmac.new là public API chính thức (wrapper của hmac.HMAC), không deprecated
         expected_signature = hmac.new(self.secret, signing_input, hashlib.sha256).digest()
         received_signature = _b64url_decode(signature_b64)
 
+        # compare_digest chống timing attack — KHÔNG dùng == để so sánh signature
         if not hmac.compare_digest(expected_signature, received_signature):
             raise SecurityError("Token signature is invalid.")
 
@@ -122,6 +126,6 @@ class TokenManager:
         header_b64 = _b64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8"))
         payload_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
         signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+        # hmac.new(key, msg, digestmod) — ký JWT bằng HMAC-SHA256
         signature = hmac.new(self.secret, signing_input, hashlib.sha256).digest()
         return f"{header_b64}.{payload_b64}.{_b64url_encode(signature)}"
-

@@ -1,3 +1,4 @@
+# 
 from __future__ import annotations
 
 import asyncio
@@ -32,6 +33,8 @@ class TcpCoreServer:
 
     async def start(self) -> None:
         self._server = await asyncio.start_server(self.handle_client, self.host, self.port)
+        print(f"MELODYNET - TCP CORE SERVER IS RUNNING...")
+        print(f"Lắng nghe kết nối mạng LAN tại: {self.host}:{self.port}")
         async with self._server:
             await self._server.serve_forever()
 
@@ -43,6 +46,7 @@ class TcpCoreServer:
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         client_id = self._register_client(writer)
+        print(f"[+] Client #{client_id} đã kết nối vào hệ thống thành công!")
         try:
             while True:
                 header_bytes = await reader.readexactly(HEADER_SIZE)
