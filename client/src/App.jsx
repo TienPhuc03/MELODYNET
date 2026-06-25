@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router'
 import Admin from './pages/Admin.jsx'
 import History from './pages/History.jsx'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import Player from './pages/Player.jsx'
+import { clearSession, getStoredUser } from './services/api.js'
 
 const navItems = [
   { to: '/', label: 'Home' },
@@ -14,35 +16,63 @@ const navItems = [
 ]
 
 function App() {
+  const [sessionUser, setSessionUser] = useState(() => getStoredUser())
+
+  useEffect(() => {
+    function syncSession() {
+      setSessionUser(getStoredUser())
+    }
+
+    window.addEventListener('melodynet-session-changed', syncSession)
+    window.addEventListener('focus', syncSession)
+    return () => {
+      window.removeEventListener('melodynet-session-changed', syncSession)
+      window.removeEventListener('focus', syncSession)
+    }
+  }, [])
+
+  function handleLogout() {
+    clearSession()
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 bg-slate-900/80 backdrop-blur">
-        <nav className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <NavLink to="/" className="text-2xl font-bold tracking-tight">
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="brand-block">
+          <NavLink to="/" className="brand">
             MELODYNET
           </NavLink>
-          <div className="flex flex-wrap gap-2">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  `rounded-full px-4 py-2 text-sm font-medium transition ${
-                    isActive
-                      ? 'bg-cyan-400 text-slate-950'
-                      : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </div>
-        </nav>
+          <p className="brand-subtitle">Auth + search + audio stream bridge</p>
+        </div>
+
+        <div className="header-actions">
+          {sessionUser ? <span className="session-badge">Hello, {sessionUser.username}</span> : null}
+          {sessionUser ? (
+            <button className="button button-secondary" type="button" onClick={handleLogout}>
+              Logout
+            </button>
+          ) : (
+            <NavLink className="button button-secondary" to="/login">
+              Login
+            </NavLink>
+          )}
+        </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-12">
+      <nav className="app-nav">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+
+      <main className="app-main">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -56,3 +86,4 @@ function App() {
 }
 
 export default App
+

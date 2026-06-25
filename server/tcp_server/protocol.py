@@ -1,50 +1,49 @@
-# struct là cầu nối giữa python và chuỗi các bytes
-import struct  
+from __future__ import annotations
+
+import json
+import struct
+from enum import IntEnum
 from typing import NamedTuple
 
-HEADER_FORMAT=">HIH"
-HEADER_SIZE= struct.calcsize(HEADER_FORMAT)
 
-class PackHeader (NamedTuple):
-    msg_type: int 
-    payload_len: int 
-    seq_no: int 
-# đóng gói 
-def pack_packet (msg_type: int, seq_no: int, payload: bytes) -> bytes:
+HEADER_FORMAT = ">BII"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+
+
+class PacketType(IntEnum):
+    AUTH = 1
+    SEARCH = 2
+    STREAM_START = 3
+    STREAM_CHUNK = 4
+    STREAM_END = 5
+    ERROR = 6
+    PING = 7
+
+
+class PacketHeader(NamedTuple):
+    msg_type: int
+    seq_no: int
+    payload_len: int
+
+
+def pack_packet(msg_type: int, seq_no: int, payload: bytes) -> bytes:
     payload_len = len(payload)
     header_bytes = struct.pack(HEADER_FORMAT, msg_type, seq_no, payload_len)
     return header_bytes + payload
-# giải nén 8 bytes tiêu đề thành tên tường minh ở PackHeader
-def unpack_packet (header_bytes: bytes) ->pack_packet:
+
+
+def unpack_packet(header_bytes: bytes) -> PacketHeader:
     if len(header_bytes) != HEADER_SIZE:
-        raise ValueError
-    # giải nén
-    unpack_packet = struct.unpack(HEADER_FORMAT, header_bytes)
-    # bọc dữ liệu và PackHeader để có thể gọi bằng tên thay vì gọi bằng index 
-    return PackHeader(
-        msg_type=unpack_packet[0],
-        payload_len=unpack_packet[1],
-        seq_no=unpack_packet[2]
-    )
+        raise ValueError(f"Header size must be {HEADER_SIZE} bytes.")
+    msg_type, seq_no, payload_len = struct.unpack(HEADER_FORMAT, header_bytes)
+    return PacketHeader(msg_type=msg_type, seq_no=seq_no, payload_len=payload_len)
 
 
-# KIỂM THỬ PHIÊN BẢN MỚI
-# ==============================================================================
-if __name__ == "__main__":
-    print("========================================================")
-    print("🚀 MELODYNET - IMPROVED NETWORK PROTOCOL")
-    print("========================================================")
-    
-    sample_data = "Dữ liệu âm thanh mã hóa".encode("utf-8")
-    packed_data = pack_packet(msg_type=2, seq_no=99, payload=sample_data)
-    
-    # Phía nhận: Giải mã
-    header = unpack_packet(packed_data[:HEADER_SIZE])
-    
-    # CODE BÂY GIỜ ĐỌC RẤT SẠCH VÀ DỄ HIỂU:
-    print(f"[+] Loại tin nhắn: {header.msg_type}")      # Gọi trực tiếp bằng .msg_type
-    print(f"[+] Độ dài dữ liệu: {header.payload_len}")   # Gọi trực tiếp bằng .payload_len
-    print(f"[+] Số thứ tự mảnh: {header.seq_no}")        # Gọi trực tiếp bằng .seq_no
-    
-    actual_payload = packed_data[HEADER_SIZE : HEADER_SIZE + header.payload_len]
-    print(f"[+] Nội dung: {actual_payload.decode('utf-8')}")
+def build_json_packet(msg_type: PacketType, seq_no: int, payload: dict) -> bytes:
+    encoded_payload = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return pack_packet(int(msg_type), seq_no, encoded_payload)
+
+
+def decode_json_payload(payload: bytes) -> dict:
+    return json.loads(payload.decode("utf-8"))
+
