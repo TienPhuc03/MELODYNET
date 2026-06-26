@@ -105,7 +105,7 @@ function Home() {
               <h2>Song Search</h2>
             </div>
             <div className="panel-actions">
-              {sessionUser ? (
+              {/* {sessionUser ? (
                 <button className="button button-secondary" type="button" onClick={handleLogout}>
                   Logout
                 </button>
@@ -113,7 +113,7 @@ function Home() {
                 <Link className="button button-secondary" to="/login">
                   Login
                 </Link>
-              )}
+              )} */}
             </div>
           </div>
 
