@@ -11,7 +11,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _to_user_out(user) -> UserOut:
-    return UserOut(id=user.id, username=user.username, created_at=user.created_at)
+    return UserOut(id=user.id, username=user.username, is_admin=bool(getattr(user, "is_admin", False)), created_at=user.created_at)
 
 
 @router.post("/register", response_model=AuthResponse)
@@ -41,4 +41,3 @@ def me(request: Request, service: MelodyNetService = Depends(get_service)) -> Us
         raise
     except ServiceError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-

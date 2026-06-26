@@ -1,10 +1,41 @@
-function bytesToBlobUrl(chunks, mimeType) {
-  const blob = new Blob(chunks, { type: mimeType })
-  return URL.createObjectURL(blob)
+function sortChunks(chunks) {
+  return [...chunks].sort((left, right) => left.seqNo - right.seqNo)
+}
+
+export function createChunkBuffer() {
+  let chunks = []
+
+  return {
+    reset() {
+      chunks = []
+    },
+
+    appendChunk({ seqNo, data }) {
+      chunks.push({
+        seqNo,
+        data: data instanceof Uint8Array ? data : new Uint8Array(data),
+      })
+    },
+
+    finalizeBlob({ mimeType = 'application/octet-stream' } = {}) {
+      if (!chunks.length) {
+        return null
+      }
+      const orderedChunks = sortChunks(chunks)
+      return new Blob(
+        orderedChunks.map((item) => item.data),
+        { type: mimeType },
+      )
+    },
+
+    getCount() {
+      return chunks.length
+    },
+  }
 }
 
 export function createAudioStream() {
-  let chunks = []
+  const buffer = createChunkBuffer()
   let objectUrl = ''
   let lastMimeType = 'audio/wav'
 
@@ -18,47 +49,32 @@ export function createAudioStream() {
   return {
     reset() {
       revokeCurrentUrl()
-      chunks = []
+      buffer.reset()
       lastMimeType = 'audio/wav'
     },
 
-    appendChunk({ seqNo, data }) {
-      chunks.push({
-        seqNo,
-        data: data instanceof Uint8Array ? data : new Uint8Array(data),
-      })
+    appendChunk(payload) {
+      buffer.appendChunk(payload)
     },
 
     finalize({ mimeType = 'audio/wav' } = {}) {
-      if (!chunks.length) {
+      const blob = buffer.finalizeBlob({ mimeType })
+      if (!blob) {
         return ''
       }
 
       lastMimeType = mimeType
-      const orderedChunks = [...chunks].sort((left, right) => left.seqNo - right.seqNo)
-      const blobParts = orderedChunks.map((item) => item.data)
       revokeCurrentUrl()
-      objectUrl = bytesToBlobUrl(blobParts, lastMimeType)
+      objectUrl = URL.createObjectURL(blob)
       return objectUrl
-    },
-
-    playOn(audioElement) {
-      if (!audioElement || !objectUrl) {
-        return Promise.resolve()
-      }
-
-      audioElement.src = objectUrl
-      audioElement.load()
-      return audioElement.play()
     },
 
     getStatus() {
       return {
-        chunks: chunks.length,
+        chunks: buffer.getCount(),
         mimeType: lastMimeType,
         hasUrl: Boolean(objectUrl),
       }
     },
   }
 }
-

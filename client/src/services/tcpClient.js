@@ -30,7 +30,7 @@ class WebSocketBridgeClient {
     }
 
     this.connectPromise = new Promise((resolve, reject) => {
-      const bridgeUrl = new URL(this.url)
+      const bridgeUrl = new URL(`${this.url}`)
       if (this.token) {
         bridgeUrl.searchParams.set('token', this.token)
       }
@@ -95,6 +95,10 @@ class WebSocketBridgeClient {
     return this.request('play', { song_id: songId }, { expect: 'stream_begin' })
   }
 
+  async downloadSong(songId) {
+    return this.request('download', { song_id: songId }, { expect: 'download_begin' })
+  }
+
   async pingTcpServer() {
     return this.request('ping', {}, { expect: 'pong' })
   }
@@ -110,7 +114,7 @@ class WebSocketBridgeClient {
     const requestId = Number(message.request_id ?? 0)
     const pending = this.pending.get(requestId)
 
-    if (message.type === 'stream_chunk') {
+    if (message.type === 'stream_chunk' || message.type === 'download_chunk') {
       const chunkBytes = decodeBase64ToBytes(message.data)
       this.emit({
         ...message,
@@ -149,4 +153,3 @@ class WebSocketBridgeClient {
 export function createTcpClient(options = {}) {
   return new WebSocketBridgeClient(options)
 }
-

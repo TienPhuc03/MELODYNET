@@ -13,6 +13,7 @@ class AuthRequest(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
+    is_admin: bool = False
     created_at: datetime | None = None
 
 class AuthResponse(BaseModel):
@@ -41,3 +42,27 @@ class StreamStartResponse(BaseModel):
     mime_type: str
     total_chunks: int
 
+
+class AdminSongRow(BaseModel):
+    id: int
+    title: str
+    artist: str | None = None
+    file_path: str
+    file_name: str
+    file_size_bytes: int
+    mime_type: str
+    created_at: datetime | None = None
+
+
+class SongUploadResponse(BaseModel):
+    song: AdminSongRow
+
+
+class AdminStatsSnapshot(BaseModel):
+    songs_total: int
+    history_total: int
+    active_tcp_connections: int
+    active_bridge_clients: int
+    online_users: int
+    active_downloads: int
+    updated_at: datetime | None = None

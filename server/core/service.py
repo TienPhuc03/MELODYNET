@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from server.core.media import DemoMediaLibrary
-from server.core.security import PasswordHasher, SecurityError, TokenManager
+from server.core.security import PasswordHasher, TokenManager
 from server.db.models import ListeningHistory, Song, User
 
 
@@ -77,6 +78,23 @@ class MelodyNetService:
                 raise ServiceError("User not found.")
             return user
 
+    def bootstrap_admin_user(self) -> bool:
+        configured_username = os.getenv("MELODYNET_ADMIN_USERNAME", "").strip()
+        if not configured_username:
+            return False
+
+        with self.session_factory() as db:
+            user = self.get_user_by_username(db, configured_username)
+            if user is None:
+                print(f"[WARN] Admin bootstrap skipped because user '{configured_username}' does not exist.")
+                return False
+            if user.is_admin:
+                return True
+            user.is_admin = True
+            db.add(user)
+            db.commit()
+            return True
+
     def get_user_by_username(self, db: Session, username: str) -> User | None:
         return db.query(User).filter(func.lower(User.username) == username.lower()).one_or_none()
 
@@ -93,6 +111,10 @@ class MelodyNetService:
                     )
                 )
             return list(query_stmt.all())
+
+    def list_admin_songs(self, query: str = "") -> list[dict[str, Any]]:
+        songs = self.search_songs(query)
+        return [self.admin_song_to_dict(song) for song in songs]
 
     def get_song(self, song_id: int) -> Song:
         with self.session_factory() as db:
@@ -126,6 +148,41 @@ class MelodyNetService:
         total_chunks = max(1, (len(audio_bytes) + chunk_size - 1) // chunk_size)
         return song, audio_bytes, total_chunks
 
+    def get_song_file(self, song_id: int) -> tuple[Song, Path, int]:
+        song = self.get_song(song_id)
+        file_path = Path(song.file_path)
+        if not file_path.exists():
+            raise ServiceError("Audio file is missing on disk.")
+        return song, file_path, file_path.stat().st_size
+
+    def create_song(self, title: str, artist: str | None, file_path: str, mime_type: str) -> Song:
+        cleaned_title = title.strip()
+        cleaned_artist = artist.strip() if artist else None
+        if not cleaned_title:
+            raise ServiceError("Song title is required.")
+
+        with self.session_factory() as db:
+            song = Song(
+                title=cleaned_title,
+                artist=cleaned_artist,
+                file_path=file_path,
+                mime_type=mime_type,
+            )
+            db.add(song)
+            db.commit()
+            db.refresh(song)
+            return song
+
+    def delete_song(self, song_id: int) -> dict[str, Any]:
+        with self.session_factory() as db:
+            song = db.get(Song, song_id)
+            if song is None:
+                raise ServiceError("Song not found.")
+            payload = self.admin_song_to_dict(song)
+            db.delete(song)
+            db.commit()
+            return payload
+
     def get_history_rows(self, user_id: int) -> list[dict[str, Any]]:
         with self.session_factory() as db:
             rows = (
@@ -146,6 +203,20 @@ class MelodyNetService:
                 )
             return items
 
+    def get_admin_stats(self, runtime_metrics: dict[str, int]) -> dict[str, Any]:
+        with self.session_factory() as db:
+            songs_total = db.query(func.count(Song.id)).scalar() or 0
+            history_total = db.query(func.count(ListeningHistory.id)).scalar() or 0
+
+        return {
+            "songs_total": int(songs_total),
+            "history_total": int(history_total),
+            "active_tcp_connections": int(runtime_metrics.get("active_tcp_connections", 0)),
+            "active_bridge_clients": int(runtime_metrics.get("active_bridge_clients", 0)),
+            "online_users": int(runtime_metrics.get("online_users", 0)),
+            "active_downloads": int(runtime_metrics.get("active_downloads", 0)),
+        }
+
     @staticmethod
     def user_to_dict(user: User) -> dict[str, Any]:
         return {
@@ -162,6 +233,21 @@ class MelodyNetService:
             "artist": song.artist,
             "file_path": song.file_path,
             "mime_type": song.mime_type,
+        }
+
+    @staticmethod
+    def admin_song_to_dict(song: Song) -> dict[str, Any]:
+        file_path = Path(song.file_path)
+        file_size_bytes = file_path.stat().st_size if file_path.exists() else 0
+        return {
+            "id": song.id,
+            "title": song.title,
+            "artist": song.artist,
+            "file_path": song.file_path,
+            "file_name": file_path.name,
+            "file_size_bytes": file_size_bytes,
+            "mime_type": song.mime_type,
+            "created_at": song.created_at,
         }
 
     @staticmethod

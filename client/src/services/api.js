@@ -48,9 +48,19 @@ export function clearSession() {
   window.dispatchEvent(new Event('melodynet-session-changed'))
 }
 
-function buildHeaders(headers = {}, hasBody = false) {
+function shouldSendJsonHeaders(body) {
+  if (body === undefined || body === null) {
+    return false
+  }
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    return false
+  }
+  return true
+}
+
+function buildHeaders(headers = {}, body = undefined) {
   const finalHeaders = { ...headers }
-  if (hasBody && !finalHeaders['Content-Type']) {
+  if (shouldSendJsonHeaders(body) && !finalHeaders['Content-Type']) {
     finalHeaders['Content-Type'] = 'application/json'
   }
 
@@ -81,10 +91,9 @@ async function readResponse(response) {
 }
 
 export async function apiRequest(path, options = {}) {
-  const hasBody = options.body !== undefined && options.body !== null
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
-    headers: buildHeaders(options.headers, hasBody),
+    headers: buildHeaders(options.headers, options.body),
   })
 
   return readResponse(response)
@@ -121,4 +130,26 @@ export async function startPlayback(songId) {
 
 export async function getHistory() {
   return apiRequest('/history/me')
+}
+
+export async function listAdminSongs(query = '') {
+  const params = new URLSearchParams({ q: query })
+  return apiRequest(`/admin/songs?${params.toString()}`)
+}
+
+export async function uploadAdminSong(formData) {
+  return apiRequest('/admin/songs', {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+export async function deleteAdminSong(songId) {
+  return apiRequest(`/admin/songs/${songId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getAdminStats() {
+  return apiRequest('/admin/stats')
 }

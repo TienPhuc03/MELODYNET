@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from server.core.service import MelodyNetService, ServiceError
+from server.core.service import MelodyNetService
 from server.db.models import User
 
 
@@ -47,3 +48,6 @@ class TcpCommandHandler:
             self.service.record_history(user.id, song_id)
         return song_payload, audio_bytes, total_chunks
 
+    def prepare_download(self, song_id: int) -> tuple[dict[str, Any], Path, int]:
+        song, file_path, total_bytes = self.service.get_song_file(song_id)
+        return self.build_song_payload(song), file_path, total_bytes

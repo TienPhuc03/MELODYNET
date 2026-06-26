@@ -1,144 +1,80 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router'
-import { clearSession, getAuthToken, getStoredUser, searchSongs } from '../services/api.js'
-import { createAudioStream } from '../services/stream.js'
-import { createTcpClient } from '../services/tcpClient.js'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
+import { clearSession, getStoredUser, searchSongs } from '../services/api.js'
+import { usePlayer } from '../player/PlayerContext.jsx'
 
 function Home() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [query, setQuery] = useState(() => new URLSearchParams(location.search).get('q') ?? '')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState('Nhập từ khóa để tìm bài hát.')
+  const [message, setMessage] = useState('Search songs by title or artist.')
   const [sessionUser, setSessionUser] = useState(() => getStoredUser())
-  const [selectedSong, setSelectedSong] = useState(null)
-  const [streamState, setStreamState] = useState({ received: 0, total: 0, mimeType: 'audio/wav' })
-  const [bridgeReady, setBridgeReady] = useState(false)
-  const [tcpStatus, setTcpStatus] = useState('checking')
-  const audioRef = useRef(null)
-  const bridgeRef = useRef(null)
-  const streamMimeRef = useRef('audio/wav')
-  const streamRef = useRef(createAudioStream())
+  const { bridgeReady, tcpStatus, statusMessage, currentSong, streamState, downloadState, playSong } = usePlayer()
 
   useEffect(() => {
-    const bridge = createTcpClient({
-      token: getAuthToken(),
-      onEvent: (message) => {
-        if (message.type === 'stream_begin') {
-          setSelectedSong(message.song)
-          streamMimeRef.current = message.mime_type ?? 'audio/wav'
-          setStreamState({
-            received: 0,
-            total: message.total_chunks ?? 0,
-            mimeType: streamMimeRef.current,
-          })
-          setStatus(`Đang nhận audio cho "${message.song.title}".`)
-          return
-        }
+    function syncSession() {
+      setSessionUser(getStoredUser())
+    }
 
-        if (message.type === 'stream_chunk') {
-          streamRef.current.appendChunk({
-            seqNo: message.seq_no ?? 0,
-            data: message.data,
-          })
-          setStreamState((current) => ({
-            ...current,
-            received: current.received + 1,
-          }))
-          return
-        }
-
-        if (message.type === 'stream_end') {
-          const audioUrl = streamRef.current.finalize({
-            mimeType: message.mime_type ?? streamMimeRef.current,
-          })
-          if (audioUrl && audioRef.current) {
-            audioRef.current.src = audioUrl
-            audioRef.current.load()
-            audioRef.current.play().catch(() => {})
-          }
-          setStatus(`Stream đã hoàn tất cho song #${message.song_id}.`)
-        }
-      },
-    })
-
-    bridgeRef.current = bridge
-    bridge
-      .connect()
-      .then(() => {
-        setBridgeReady(true)
-        return bridge.pingTcpServer()
-      })
-      .then(() => {
-        setTcpStatus('ok')
-      })
-      .catch(() => {
-        setBridgeReady(false)
-        setTcpStatus('error')
-        setStatus('WebSocket bridge đã mở nhưng TCP core chưa phản hồi.')
-      })
-
+    window.addEventListener('melodynet-session-changed', syncSession)
     return () => {
-      bridge.close()
+      window.removeEventListener('melodynet-session-changed', syncSession)
     }
   }, [])
 
-  async function handleSearch(event) {
-    event.preventDefault()
-    setLoading(true)
-    setStatus('Đang tìm bài hát...')
+  useEffect(() => {
+    const nextQuery = new URLSearchParams(location.search).get('q') ?? ''
+    setQuery(nextQuery)
+    if (nextQuery) {
+      void handleSearch(nextQuery)
+    }
+  }, [location.search])
 
+  async function handleSearch(submittedQuery = query, event = null) {
+    if (event) {
+      event.preventDefault()
+    }
+
+    setLoading(true)
+    setMessage('Loading songs...')
     try {
-      if (bridgeReady && bridgeRef.current) {
-        const items = await bridgeRef.current.searchSongs(query)
-        setResults(items ?? [])
-        setStatus(items?.length ? `Tìm thấy ${items.length} bài hát.` : 'Không có kết quả phù hợp.')
-      } else {
-        const response = await searchSongs(query)
-        setResults(response.items ?? [])
-        setStatus(response.items?.length ? `Tìm thấy ${response.items.length} bài hát.` : 'Không có kết quả phù hợp.')
-      }
+      const response = await searchSongs(submittedQuery)
+      const items = response.items ?? []
+      setResults(items)
+      setMessage(items.length ? `Found ${items.length} songs.` : 'No songs matched your query.')
     } catch (error) {
-      setStatus(error.message || 'Không thể tìm kiếm.')
+      setMessage(error.message || 'Unable to load songs.')
     } finally {
       setLoading(false)
     }
   }
 
   async function handlePlay(song) {
-    const bridge = bridgeRef.current
-    if (!bridge) {
-      setStatus('WebSocket bridge chưa sẵn sàng.')
-      return
-    }
-
-    streamRef.current.reset()
-    setSelectedSong(song)
-    setStreamState({ received: 0, total: 0, mimeType: song.mime_type ?? 'audio/wav' })
-    setStatus(`Bắt đầu stream "${song.title}"...`)
-
     try {
-      await bridge.playSong(song.id)
+      await playSong(song)
+      navigate('/player')
     } catch (error) {
-      setStatus(error.message || 'Không thể phát bài hát.')
+      setMessage(error.message || 'Unable to start playback.')
     }
   }
 
   function handleLogout() {
     clearSession()
     setSessionUser(null)
-    setStatus('Đã đăng xuất. Bạn có thể đăng nhập lại để lưu lịch sử nghe.')
+    setMessage('You are signed out. Sign back in to save listening history.')
   }
 
-  const tcpLabel =
-    tcpStatus === 'checking' ? 'Checking…' : tcpStatus === 'ok' ? 'Live ✓' : 'Offline ✕'
+  const tcpLabel = tcpStatus === 'checking' ? 'Checking' : tcpStatus === 'ok' ? 'Live' : 'Offline'
 
   return (
     <section className="home-layout">
       <div className="hero panel">
         <div className="hero-copy">
-          <p className="eyebrow">Browser to bridge</p>
-          <h1>Search trên HTTP, phát nhạc qua WebSocket, lưu lịch sử bằng JWT.</h1>
+          <p className="eyebrow">MelodyNet LAN Audio</p>
+          <h1>Search over HTTP, play in the browser, and download files with live TCP progress.</h1>
+          <p>{statusMessage}</p>
         </div>
 
         <div className="hero-stack">
@@ -147,16 +83,16 @@ function Home() {
             <strong>{sessionUser ? sessionUser.username : 'Guest'}</strong>
           </div>
           <div className="mini-card">
-            <span>WS Bridge</span>
+            <span>Bridge</span>
             <strong>{bridgeReady ? 'Connected' : 'Connecting'}</strong>
           </div>
           <div className="mini-card">
-            <span>TCP Server :8888</span>
+            <span>TCP Core</span>
             <strong>{tcpLabel}</strong>
           </div>
           <div className="mini-card">
-            <span>Status</span>
-            <strong>{loading ? 'Searching' : 'Ready'}</strong>
+            <span>History</span>
+            <strong>{sessionUser ? 'Auto save on play' : 'Login to save'}</strong>
           </div>
         </div>
       </div>
@@ -166,38 +102,38 @@ function Home() {
           <div className="panel-header">
             <div>
               <p className="eyebrow">Catalog</p>
-              <h2>Tìm bài hát</h2>
+              <h2>Song Search</h2>
             </div>
             <div className="panel-actions">
               {sessionUser ? (
                 <button className="button button-secondary" type="button" onClick={handleLogout}>
-                  Đăng xuất
+                  Logout
                 </button>
               ) : (
                 <Link className="button button-secondary" to="/login">
-                  Đăng nhập
+                  Login
                 </Link>
               )}
             </div>
           </div>
 
-          <form className="search-form" onSubmit={handleSearch}>
+          <form className="search-form" onSubmit={(event) => handleSearch(query, event)}>
             <input
               className="input"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm theo title hoặc artist"
+              placeholder="Try Moonlight, City, Ensemble..."
             />
             <button className="button button-primary" type="submit" disabled={loading}>
-              {loading ? 'Đang tìm...' : 'Search'}
+              {loading ? 'Searching...' : 'Search'}
             </button>
           </form>
 
-          <p className="status-line">{status}</p>
+          <p className="status-line">{message}</p>
 
           <div className="results-grid">
             {results.map((song) => (
-              <article className="song-card" key={song.id}>
+              <article className="song-card song-card-extended" key={song.id}>
                 <div>
                   <p className="song-title">{song.title}</p>
                   <p className="song-meta">{song.artist ?? 'Unknown artist'}</p>
@@ -206,6 +142,9 @@ function Home() {
                   <button className="button button-primary" type="button" onClick={() => handlePlay(song)}>
                     Play
                   </button>
+                  <Link className="button button-secondary" to="/player">
+                    Open Player
+                  </Link>
                 </div>
               </article>
             ))}
@@ -215,35 +154,42 @@ function Home() {
         <div className="panel player-panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Now playing</p>
-              <h2>{selectedSong ? selectedSong.title : 'Chưa có bài nào'}</h2>
+              <p className="eyebrow">Now Playing</p>
+              <h2>{currentSong ? currentSong.title : 'No active song yet'}</h2>
             </div>
             <Link className="button button-secondary" to="/history">
               History
             </Link>
           </div>
 
+          <div className="player-summary-grid">
+            <div className="metric-inline">
+              <span>Stream chunks</span>
+              <strong>{streamState.total ? `${streamState.received}/${streamState.total}` : 'Idle'}</strong>
+            </div>
+            <div className="metric-inline">
+              <span>Download</span>
+              <strong>{downloadState.status === 'idle' ? 'Ready' : `${downloadState.progressPercent}%`}</strong>
+            </div>
+            <div className="metric-inline">
+              <span>MIME</span>
+              <strong>{currentSong?.mime_type ?? streamState.mimeType}</strong>
+            </div>
+          </div>
+
           <p className="status-line">
-            {streamState.total
-              ? `Received ${streamState.received}/${streamState.total} chunks`
-              : 'Chọn một bài hát để bắt đầu stream.'}
+            {currentSong
+              ? `Selected: ${currentSong.title} by ${currentSong.artist ?? 'Unknown artist'}`
+              : 'Pick a song from the catalog, then jump to the player for full controls and download.'}
           </p>
 
-          <audio ref={audioRef} className="audio-player" controls />
-
-          <div className="song-detail">
-            <div>
-              <span>Title</span>
-              <strong>{selectedSong?.title ?? 'N/A'}</strong>
-            </div>
-            <div>
-              <span>Artist</span>
-              <strong>{selectedSong?.artist ?? 'N/A'}</strong>
-            </div>
-            <div>
-              <span>MIME</span>
-              <strong>{selectedSong?.mime_type ?? streamState.mimeType}</strong>
-            </div>
+          <div className="player-cta-stack">
+            <Link className="button button-primary" to="/player">
+              Open Full Player
+            </Link>
+            <Link className="button button-secondary" to="/admin">
+              Admin Dashboard
+            </Link>
           </div>
         </div>
       </div>
@@ -252,4 +198,3 @@ function Home() {
 }
 
 export default Home
-

@@ -29,3 +29,9 @@ def get_current_user(request: Request, service: MelodyNetService):
     except ServiceError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
+
+def require_admin(request: Request, service: MelodyNetService):
+    user = get_current_user(request, service)
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required.")
+    return user
