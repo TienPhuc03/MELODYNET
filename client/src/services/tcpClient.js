@@ -95,22 +95,8 @@ class WebSocketBridgeClient {
     return this.request('play', { song_id: songId }, { expect: 'stream_begin' })
   }
 
-  /**
-   * Gửi ping tới WebSocket bridge → bridge forward sang TCP server port 8888
-   * → TCP server trả pong → bridge trả về client.
-   *
-   * Mục đích: chứng minh với giám khảo rằng TCP server (port 8888) đang sống
-   * và thực sự xử lý request — không chỉ là WebSocket bridge hoạt động độc lập.
-   *
-   * Luồng đầy đủ:
-   *   Browser → WS /ws/bridge (port 8000)
-   *             → TCP asyncio server (port 8888)   ← custom binary protocol
-   *             ← pong response
-   *          ← WS message type "pong"
-   */
   async pingTcpServer() {
-    const response = await this.request('ping', {}, { expect: 'pong' })
-    return response
+    return this.request('ping', {}, { expect: 'pong' })
   }
 
   handleMessage(rawMessage) {
@@ -163,3 +149,4 @@ class WebSocketBridgeClient {
 export function createTcpClient(options = {}) {
   return new WebSocketBridgeClient(options)
 }
+

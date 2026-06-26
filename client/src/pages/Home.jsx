@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { clearSession, getAuthToken, getStoredUser, searchSongs } from '../services/api.js'
 import { createAudioStream } from '../services/stream.js'
 import { createTcpClient } from '../services/tcpClient.js'
 
 function Home() {
-  const [query, setQuery] = useState('')
+  const location = useLocation()
+  const [query, setQuery] = useState(() => new URLSearchParams(location.search).get('q') ?? '')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('Nhập từ khóa để tìm bài hát.')
@@ -13,7 +14,6 @@ function Home() {
   const [selectedSong, setSelectedSong] = useState(null)
   const [streamState, setStreamState] = useState({ received: 0, total: 0, mimeType: 'audio/wav' })
   const [bridgeReady, setBridgeReady] = useState(false)
-  // tcpStatus: 'checking' | 'ok' | 'error'
   const [tcpStatus, setTcpStatus] = useState('checking')
   const audioRef = useRef(null)
   const bridgeRef = useRef(null)
@@ -27,7 +27,11 @@ function Home() {
         if (message.type === 'stream_begin') {
           setSelectedSong(message.song)
           streamMimeRef.current = message.mime_type ?? 'audio/wav'
-          setStreamState({ received: 0, total: message.total_chunks ?? 0, mimeType: streamMimeRef.current })
+          setStreamState({
+            received: 0,
+            total: message.total_chunks ?? 0,
+            mimeType: streamMimeRef.current,
+          })
           setStatus(`Đang nhận audio cho "${message.song.title}".`)
           return
         }
@@ -45,33 +49,33 @@ function Home() {
         }
 
         if (message.type === 'stream_end') {
-          const audioUrl = streamRef.current.finalize({ mimeType: message.mime_type ?? streamMimeRef.current })
+          const audioUrl = streamRef.current.finalize({
+            mimeType: message.mime_type ?? streamMimeRef.current,
+          })
           if (audioUrl && audioRef.current) {
             audioRef.current.src = audioUrl
             audioRef.current.load()
             audioRef.current.play().catch(() => {})
           }
-          setStatus(`Phát xong stream cho song #${message.song_id}.`)
+          setStatus(`Stream đã hoàn tất cho song #${message.song_id}.`)
         }
       },
     })
 
     bridgeRef.current = bridge
-
-    bridge.connect()
+    bridge
+      .connect()
       .then(() => {
         setBridgeReady(true)
-        // Sau khi WebSocket bridge kết nối, probe TCP server ngay lập tức.
-        // Luồng: Browser → WS bridge (8000) → TCP server (8888) → pong
         return bridge.pingTcpServer()
       })
       .then(() => {
         setTcpStatus('ok')
       })
       .catch(() => {
-        setBridgeReady(true)   // bridge vẫn có thể dùng được (fallback HTTP search)
+        setBridgeReady(false)
         setTcpStatus('error')
-        setStatus('WebSocket bridge kết nối nhưng TCP server (port 8888) chưa phản hồi.')
+        setStatus('WebSocket bridge đã mở nhưng TCP core chưa phản hồi.')
       })
 
     return () => {
@@ -126,12 +130,8 @@ function Home() {
     setStatus('Đã đăng xuất. Bạn có thể đăng nhập lại để lưu lịch sử nghe.')
   }
 
-  // Label hiển thị trạng thái TCP server cho giám khảo thấy rõ
-  const tcpLabel = tcpStatus === 'checking'
-    ? 'Checking…'
-    : tcpStatus === 'ok'
-      ? 'Live ✓'
-      : 'Offline ✗'
+  const tcpLabel =
+    tcpStatus === 'checking' ? 'Checking…' : tcpStatus === 'ok' ? 'Live ✓' : 'Offline ✕'
 
   return (
     <section className="home-layout">
@@ -139,10 +139,6 @@ function Home() {
         <div className="hero-copy">
           <p className="eyebrow">Browser to bridge</p>
           <h1>Search trên HTTP, phát nhạc qua WebSocket, lưu lịch sử bằng JWT.</h1>
-          <p>
-            Luồng này giữ mọi thứ rõ ràng: người dùng đăng nhập, search danh sách bài hát, rồi bấm
-            play để backend đẩy audio chunk theo thứ tự <code>seq_no</code>.
-          </p>
         </div>
 
         <div className="hero-stack">
@@ -154,8 +150,6 @@ function Home() {
             <span>WS Bridge</span>
             <strong>{bridgeReady ? 'Connected' : 'Connecting'}</strong>
           </div>
-          {/* Card này chứng minh TCP server (port 8888) đang sống —
-              giám khảo thấy được luồng Browser→WS→TCP */}
           <div className="mini-card">
             <span>TCP Server :8888</span>
             <strong>{tcpLabel}</strong>
@@ -258,3 +252,4 @@ function Home() {
 }
 
 export default Home
+
