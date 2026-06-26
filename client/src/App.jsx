@@ -50,7 +50,6 @@ function App() {
           <NavLink to="/" className="brand">
             MelodyNet
           </NavLink>
-          <p className="brand-subtitle">Premium Audio System</p>
         </div>
 
         <nav className="sidebar-nav">
@@ -61,23 +60,24 @@ function App() {
               end={item.to === '/'}
               className={({ isActive }) => (isActive ? 'sidebar-link sidebar-link-active' : 'sidebar-link')}
             >
-              <span className="sidebar-link-icon" aria-hidden="true" />
+              {/* <span className="sidebar-link-icon" aria-hidden="true" /> */}
               <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
 
-        <button className="button button-primary sidebar-cta" type="button" onClick={() => navigate('/')}>
-          Create Playlist
+        <button className="button button-primary sidebar-cta" type="button" onClick={() => navigate('/player')}>
+          Create Playlist 
+         
         </button>
 
         <div className="sidebar-footer">
-          <button className="sidebar-mini-link" type="button" onClick={() => navigate('/player')}>
+          {/* <button className="sidebar-mini-link" type="button" onClick={() => navigate('/player')}>
             Install App
           </button>
           <button className="sidebar-mini-link" type="button" onClick={() => navigate('/admin')}>
             Settings
-          </button>
+          </button> */}
         </div>
       </aside>
 

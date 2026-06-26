@@ -143,13 +143,13 @@ function Player() {
             <div className="progress-bar-shell">
               <span style={{ width: `${downloadState.progressPercent}%` }} />
             </div>
-            <p className="status-line">
+            {/* <p className="status-line">
               {downloadState.fileName
                 ? `Target file: ${downloadState.fileName}`
                 : 'Start a download to watch TCP progress in real time.'}
-            </p>
+            </p> */}
           </div>
-
+       
           <div className="song-detail">
             <div>
               <span>Title</span>
