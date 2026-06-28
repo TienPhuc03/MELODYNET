@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 from contextlib import asynccontextmanager
+from typing import Awaitable, Callable
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -116,44 +116,7 @@ async def websocket_bridge(websocket: WebSocket) -> None:
 
             if action == "play":
                 song_id = int(message.get("song_id", 0))
-                song, audio_bytes, total_chunks = service.stream_song(song_id)
-                if current_user is not None:
-                    service.record_history(current_user.id, song_id)
-                    await monitor.notify_stats_update()
-
-                await websocket.send_json(
-                    {
-                        "request_id": request_id,
-                        "type": "stream_begin",
-                        "song": service.song_to_dict(song),
-                        "total_chunks": total_chunks,
-                        "mime_type": song.mime_type,
-                    }
-                )
-
-                chunk_size = 16_384
-                seq_no = 0
-                for offset in range(0, len(audio_bytes), chunk_size):
-                    chunk = audio_bytes[offset : offset + chunk_size]
-                    await websocket.send_json(
-                        {
-                            "request_id": request_id,
-                            "type": "stream_chunk",
-                            "song_id": song_id,
-                            "seq_no": seq_no,
-                            "data": base64.b64encode(chunk).decode("ascii"),
-                        }
-                    )
-                    seq_no += 1
-
-                await websocket.send_json(
-                    {
-                        "request_id": request_id,
-                        "type": "stream_end",
-                        "song_id": song_id,
-                        "total_chunks": total_chunks,
-                    }
-                )
+                await _relay_play_via_tcp(websocket, tcp_server, request_id, song_id, current_user, service, monitor)
                 continue
 
             if action == "download":
@@ -227,17 +190,67 @@ async def _relay_download_via_tcp(
     request_id: int,
     song_id: int,
 ) -> None:
+    await _relay_command_via_tcp(
+        websocket=websocket,
+        tcp_server=tcp_server,
+        request_id=request_id,
+        command_payload={
+            "action": "download",
+            "request_id": request_id,
+            "song_id": song_id,
+        },
+        terminal_packet_types={PacketType.DOWNLOAD_END, PacketType.ERROR},
+    )
+
+
+async def _relay_play_via_tcp(
+    websocket: WebSocket,
+    tcp_server: TcpCoreServer,
+    request_id: int,
+    song_id: int,
+    current_user: User | None,
+    service: MelodyNetService,
+    monitor: RuntimeMonitor,
+) -> None:
+    history_recorded = False
+
+    async def on_packet(packet_type: PacketType, payload: dict) -> None:
+        nonlocal history_recorded
+        if packet_type != PacketType.STREAM_START or history_recorded or current_user is None:
+            return
+        service.record_history(current_user.id, song_id)
+        history_recorded = True
+        await monitor.notify_stats_update()
+
+    await _relay_command_via_tcp(
+        websocket=websocket,
+        tcp_server=tcp_server,
+        request_id=request_id,
+        command_payload={
+            "action": "play",
+            "request_id": request_id,
+            "song_id": song_id,
+        },
+        terminal_packet_types={PacketType.STREAM_END, PacketType.ERROR},
+        on_packet=on_packet,
+    )
+
+
+async def _relay_command_via_tcp(
+    websocket: WebSocket,
+    tcp_server: TcpCoreServer,
+    request_id: int,
+    command_payload: dict,
+    terminal_packet_types: set[PacketType],
+    on_packet: Callable[[PacketType, dict], Awaitable[None]] | None = None,
+) -> None:
     reader, writer = await asyncio.open_connection(tcp_server.host, tcp_server.port)
     try:
         writer.write(
             build_json_packet(
                 PacketType.COMMAND,
                 request_id,
-                {
-                    "action": "download",
-                    "request_id": request_id,
-                    "song_id": song_id,
-                },
+                command_payload,
             )
         )
         await writer.drain()
@@ -247,8 +260,10 @@ async def _relay_download_via_tcp(
             header = unpack_packet(header_bytes)
             payload = decode_json_payload(await reader.readexactly(header.payload_len))
             packet_type = PacketType(header.msg_type)
+            if on_packet is not None:
+                await on_packet(packet_type, payload)
             await websocket.send_json(_tcp_packet_to_bridge_message(packet_type, request_id, payload))
-            if packet_type in {PacketType.DOWNLOAD_END, PacketType.ERROR}:
+            if packet_type in terminal_packet_types:
                 return
     finally:
         writer.close()
@@ -256,6 +271,17 @@ async def _relay_download_via_tcp(
 
 
 def _tcp_packet_to_bridge_message(packet_type: PacketType, request_id: int, payload: dict) -> dict:
+    if packet_type == PacketType.STREAM_START:
+        return {
+            "request_id": request_id,
+            "type": "stream_begin",
+            **payload,
+            "mime_type": payload.get("song", {}).get("mime_type", "application/octet-stream"),
+        }
+    if packet_type == PacketType.STREAM_CHUNK:
+        return {"request_id": request_id, "type": "stream_chunk", **payload}
+    if packet_type == PacketType.STREAM_END:
+        return {"request_id": request_id, "type": "stream_end", **payload}
     if packet_type == PacketType.DOWNLOAD_START:
         return {"request_id": request_id, "type": "download_begin", **payload}
     if packet_type == PacketType.DOWNLOAD_CHUNK:

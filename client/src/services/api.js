@@ -1,22 +1,43 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000')
+const CONFIGURED_WS_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_WS_BASE_URL ?? '')
 const TOKEN_KEY = 'melodynet_access_token'
 const USER_KEY = 'melodynet_user'
+
+function normalizeBaseUrl(value) {
+  return String(value ?? '').trim().replace(/\/+$/, '')
+}
+
+function toWebSocketOrigin(url) {
+  if (url.startsWith('https://')) {
+    return url.replace('https://', 'wss://')
+  }
+  if (url.startsWith('http://')) {
+    return url.replace('http://', 'ws://')
+  }
+  return url
+}
+
+function buildWebSocketUrl(pathname) {
+  let wsBaseUrl = CONFIGURED_WS_BASE_URL || toWebSocketOrigin(API_BASE_URL)
+  if (wsBaseUrl.endsWith('/ws/bridge') || wsBaseUrl.endsWith('/ws/admin')) {
+    wsBaseUrl = wsBaseUrl.slice(0, wsBaseUrl.lastIndexOf('/ws/'))
+  }
+  if (wsBaseUrl.endsWith(pathname)) {
+    return wsBaseUrl
+  }
+  return `${wsBaseUrl}${pathname}`
+}
 
 export function getApiBaseUrl() {
   return API_BASE_URL
 }
 
-export function getWebSocketBaseUrl() {
-  const configured = import.meta.env.VITE_WS_BASE_URL
-  if (configured) {
-    return configured
-  }
+export function getWebSocketBridgeUrl() {
+  return buildWebSocketUrl('/ws/bridge')
+}
 
-  if (API_BASE_URL.startsWith('https://')) {
-    return API_BASE_URL.replace('https://', 'wss://')
-  }
-
-  return API_BASE_URL.replace('http://', 'ws://')
+export function getAdminWebSocketUrl() {
+  return buildWebSocketUrl('/ws/admin')
 }
 
 export function getAuthToken() {

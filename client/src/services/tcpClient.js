@@ -1,4 +1,4 @@
-import { getWebSocketBaseUrl } from './api.js'
+import { getWebSocketBridgeUrl } from './api.js'
 
 function decodeBase64ToBytes(base64Text) {
   const binaryString = window.atob(base64Text)
@@ -10,7 +10,7 @@ function decodeBase64ToBytes(base64Text) {
 }
 
 class WebSocketBridgeClient {
-  constructor({ token = '', url = getWebSocketBaseUrl(), onEvent = null } = {}) {
+  constructor({ token = '', url = getWebSocketBridgeUrl(), onEvent = null } = {}) {
     this.url = url
     this.token = token
     this.onEvent = onEvent

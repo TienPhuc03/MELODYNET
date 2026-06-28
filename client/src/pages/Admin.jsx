@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   deleteAdminSong,
+  getAdminWebSocketUrl,
   getAdminStats,
   getAuthToken,
   getStoredUser,
-  getWebSocketBaseUrl,
   listAdminSongs,
   uploadAdminSong,
 } from '../services/api.js'
@@ -47,7 +47,7 @@ function Admin() {
     void loadStats()
     void loadSongs(songQuery)
 
-    const adminUrl = new URL(`${getWebSocketBaseUrl()}/ws/admin`)
+    const adminUrl = new URL(getAdminWebSocketUrl())
     const token = getAuthToken()
     if (token) {
       adminUrl.searchParams.set('token', token)
